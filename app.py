@@ -40,6 +40,7 @@ def analyze(q):
     hist=y.history(period="2y",auto_adjust=False)
     if hist.empty: raise ValueError("No historical price data returned.")
     price=float(info.get("currentPrice") or info.get("regularMarketPrice") or hist["Close"].iloc[-1])
+    name=info.get("longName") or info.get("shortName") or sym.replace(".NS","")
     sector=info.get("sector") or "Unknown"; industry=info.get("industry") or "Unknown"
     fin=financials(y); ratios=ratio_analysis(fin,info); technical=tech(hist)
     share=fetch_shareholding(sym)
@@ -64,7 +65,7 @@ except Exception as e:
 
 i=d["info"]; t=d["technical"]; v=d["val"]; p=d["plan"]; oi=d["oi"]; sc=d["sc"]
 verdict="STRONG BUY" if sc["overall"]>=85 else "BUY" if sc["overall"]>=75 else "HOLD / WATCH" if sc["overall"]>=60 else "AVOID"
-st.subheader(d["name"])
+st.subheader(d.get("name") or d["sym"])
 st.caption(f'{d["sym"]} • {d["sector"]} → {d["industry"]}')
 cols=st.columns(6)
 for col,label,val in zip(cols,["Current","Entry","Stop","Target 1","Target 2","Decision"],
@@ -102,7 +103,7 @@ with tabs[3]:
     st.subheader("Price-action engine")
     st.dataframe(kv_df([("Trend",p["trend"]),("Chart pattern",p["pattern"]),("Candlestick",p["candlestick"]),
                         ("Volume confirmation",p["volume_signal"]),("Support",money(t["Support"])),("Resistance",money(t["Resistance"])),
-                        ("Breakout watch",t["Breakout"])]),hide_index=True,use_container_width=True)
+                        ("Breakout watch",t.get("Breakout","N/A"))]),hide_index=True,use_container_width=True)
 
 with tabs[4]:
     st.subheader("Open Interest / PCR")
