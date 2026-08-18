@@ -109,7 +109,7 @@ if go or q:
         st.write("Buddyy derives levels from the current price plus market structure. It does not use a fixed percentage target.")
         st.dataframe(pd.DataFrame({
             "Component":["Current price","Support","Resistance","Pattern","Candlestick","Price-volume","Open Interest","Momentum","Final entry","Stop","Target 1","Target 2"],
-            "Value":[money(d["price"]),money(t["support"]),money(t["resistance"]),p["pattern"],p["candlestick"],
+            "Value":[money(d["price"]),money(t["Support"]),money(t["Resistance"]),p["pattern"],p["candlestick"],
                      p["volume_signal"],oi["signal"],p["momentum"],money(p["entry"]),money(p["stop"]),money(p["target1"]),money(p["target2"])]
         }), hide_index=True, use_container_width=True)
         st.caption("A level is valid only when multiple independent signals agree. If evidence conflicts, Buddyy can return WAIT rather than force an entry.")
@@ -122,7 +122,7 @@ if go or q:
         st.subheader("Price-action engine")
         st.dataframe(pd.DataFrame({
             "Signal":["Trend","Pattern","Candlestick","Volume confirmation","Support","Resistance","Breakout watch"],
-            "Reading":[p["trend"],p["pattern"],p["candlestick"],p["volume_signal"],money(t["support"]),money(t["resistance"]),t["breakout"]]
+            "Reading":[p["trend"],p["pattern"],p["candlestick"],p["volume_signal"],money(t["Support"]),money(t["Resistance"]),t["breakout"]]
         }), hide_index=True, use_container_width=True)
 
     with tabs[4]:
