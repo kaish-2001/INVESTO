@@ -34,7 +34,6 @@ def symbolize(q):
     q=q.strip().upper().replace(" ","")
     return q if q.endswith(".NS") else q+".NS"
 
-@st.cache_data(ttl=180,show_spinner=False)
 def analyze(q):
     sym=symbolize(q); y=yf.Ticker(sym); info=y.info
     if not info: raise ValueError("No data found. Try an NSE ticker such as AFCONS, RELIANCE, TCS or ICICIBANK.")
