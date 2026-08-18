@@ -2,9 +2,6 @@
 import streamlit as st
 import yfinance as yf
 import pandas as pd
-import numpy as np
-from datetime import datetime, timezone
-
 from engines.technical import tech
 from engines.valuation import valuation
 from engines.sector import framework
@@ -18,10 +15,9 @@ st.set_page_config(page_title="Buddyy", page_icon="📈", layout="wide")
 st.markdown("""
 <style>
 .block-container{max-width:1450px;padding-top:1.5rem}
-.brand{font-size:42px;font-weight:900;letter-spacing:-2px}.brand span{color:#4da3ff}
-.muted{color:#8fa3bb}
+.brand{font-size:42px;font-weight:900;letter-spacing:-2px}
+.brand span{color:#4da3ff}.muted{color:#8fa3bb}
 .signal{padding:18px;border:1px solid #26384f;border-radius:14px;background:#101c2d}
-.small{font-size:.78rem;color:#8fa3bb}
 </style>
 """, unsafe_allow_html=True)
 
@@ -45,37 +41,36 @@ def analyze(q):
     hist=t.history(period="2y", auto_adjust=False)
     if hist.empty:
         raise ValueError("No historical price data returned.")
-    price=float(info.get("currentPrice") or info.get("regularMarketPrice") or hist.Close.iloc[-1])
+    price=float(info.get("currentPrice") or info.get("regularMarketPrice") or hist["Close"].iloc[-1])
     sector=info.get("sector") or "Unknown"
     industry=info.get("industry") or "Unknown"
     technical=tech(hist)
-    val=valuation(info, price)
-    framework_data=framework(sector)
-    oi=get_oi_snapshot(sym, price)
-    plan=build_trade_plan(price, hist, technical, oi, val)
-    scoring=score(info, technical, val)
-    return dict(sym=sym,name=info.get("longName") or info.get("shortName") or q,
-                info=info,hist=hist,price=price,sector=sector,industry=industry,
-                technical=technical,valuation=val,framework=framework_data,
-                oi=oi,plan=plan,scoring=scoring)
+    val=valuation(info,price)
+    oi=get_oi_snapshot(sym,price)
+    plan=build_trade_plan(price,hist,technical,oi,val)
+    scoring=score(info,technical,val)
+    return {"sym":sym,"name":info.get("longName") or info.get("shortName") or q,
+            "info":info,"hist":hist,"price":price,"sector":sector,"industry":industry,
+            "technical":technical,"valuation":val,"framework":framework(sector),
+            "oi":oi,"plan":plan,"scoring":scoring}
 
-st.markdown('<div class="brand">buddyy<span>.</span></div><p class="muted">Your Intelligent Stock Research Buddy</p>', unsafe_allow_html=True)
-q=st.text_input("Company / NSE ticker", "RELIANCE", placeholder="RELIANCE, TCS, ICICIBANK")
-go=st.button("🔎 ANALYZE", type="primary")
+st.markdown('<div class="brand">buddyy<span>.</span></div><p class="muted">Your Intelligent Stock Research Buddy</p>',unsafe_allow_html=True)
+q=st.text_input("Company / NSE ticker","RELIANCE",placeholder="RELIANCE, TCS, ICICIBANK")
+go=st.button("🔎 ANALYZE",type="primary")
 
 if go or q:
     try:
         with st.spinner("Buddyy is reading price action, structure and derivatives data..."):
             d=analyze(q)
     except Exception as e:
-        st.error(str(e)); st.stop()
+        st.error(f"Data/analysis error: {e}")
+        st.stop()
 
     i=d["info"]; t=d["technical"]; v=d["valuation"]; p=d["plan"]; oi=d["oi"]; sc=d["scoring"]
     verdict="STRONG BUY" if sc["overall"]>=85 else "BUY" if sc["overall"]>=75 else "HOLD / WATCH" if sc["overall"]>=60 else "AVOID"
 
     st.subheader(d["name"])
     st.caption(f'{d["sym"]} • {d["sector"]} → {d["industry"]}')
-
     a,b,c,e=st.columns(4)
     a.metric("Current price",money(d["price"]))
     b.metric("Technical entry",money(p["entry"]))
@@ -95,47 +90,56 @@ if go or q:
 
     with tabs[0]:
         st.subheader("Price & volume")
-        st.line_chart(d["hist"].Close.tail(252))
-        st.dataframe(pd.DataFrame({
-            "Metric":["Market Cap","P/E","P/B","ROE","Revenue Growth","Debt/Equity"],
-            "Value":[money(i.get("marketCap")/1e7)+" Cr" if i.get("marketCap") else "N/A",
-                     i.get("trailingPE"),i.get("priceToBook"),
-                     pct((i.get("returnOnEquity") or 0)*100),
-                     pct((i.get("revenueGrowth") or 0)*100),i.get("debtToEquity")]
-        }), hide_index=True, use_container_width=True)
+        st.line_chart(d["hist"]["Close"].tail(252))
+        rows = [
+            ("Market Cap", money(i.get("marketCap")/1e7)+" Cr" if i.get("marketCap") else "N/A"),
+            ("P/E", i.get("trailingPE")), ("P/B", i.get("priceToBook")),
+            ("ROE", pct((i.get("returnOnEquity") or 0)*100)),
+            ("Revenue Growth", pct((i.get("revenueGrowth") or 0)*100)),
+            ("Debt/Equity", i.get("debtToEquity"))
+        ]
+        st.dataframe(pd.DataFrame(rows,columns=["Metric","Value"]),hide_index=True,use_container_width=True)
 
     with tabs[1]:
         st.subheader("Entry / Exit Decision Engine")
-        st.write("Buddyy derives levels from the current price plus market structure. It does not use a fixed percentage target.")
-        st.dataframe(pd.DataFrame({
-            "Component":["Current price","Support","Resistance","Pattern","Candlestick","Price-volume","Open Interest","Momentum","Final entry","Stop","Target 1","Target 2"],
-            "Value":[money(d["price"]),money(t["Support"]),money(t["Resistance"]),p["pattern"],p["candlestick"],
-                     p["volume_signal"],oi["signal"],p["momentum"],money(p["entry"]),money(p["stop"]),money(p["target1"]),money(p["target2"])]
-        }), hide_index=True, use_container_width=True)
-        st.caption("A level is valid only when multiple independent signals agree. If evidence conflicts, Buddyy can return WAIT rather than force an entry.")
+        st.write("Entry is derived from current price, structure, support/resistance, candles, volume, OI and volatility. It is not a fixed-percentage rule.")
+        rows = [
+            ("Current price",money(d["price"])), ("Support",money(t["Support"])),
+            ("Resistance",money(t["Resistance"])), ("Pattern",p["pattern"]),
+            ("Candlestick",p["candlestick"]), ("Price-volume",p["volume_signal"]),
+            ("Open Interest",oi["signal"]), ("Momentum",p["momentum"]),
+            ("Final entry",money(p["entry"])), ("Stop",money(p["stop"])),
+            ("Target 1",money(p["target1"])), ("Target 2",money(p["target2"]))
+        ]
+        st.dataframe(pd.DataFrame(rows,columns=["Component","Value"]),hide_index=True,use_container_width=True)
+        st.caption("When signals conflict, Buddyy can return WAIT rather than force a trade.")
 
     with tabs[2]:
         st.subheader("Technical indicators")
-        st.dataframe(pd.DataFrame(list(t.items()), columns=["Indicator","Value"]), hide_index=True, use_container_width=True)
+        display={k:v for k,v in t.items() if not k.startswith("_")}
+        st.dataframe(pd.DataFrame(list(display.items()),columns=["Indicator","Value"]),hide_index=True,use_container_width=True)
 
     with tabs[3]:
         st.subheader("Price-action engine")
-        st.dataframe(pd.DataFrame({
-            "Signal":["Trend","Pattern","Candlestick","Volume confirmation","Support","Resistance","Breakout watch"],
-            "Reading":[p["trend"],p["pattern"],p["candlestick"],p["volume_signal"],money(t["Support"]),money(t["Resistance"]),t["breakout"]]
-        }), hide_index=True, use_container_width=True)
+        rows=[
+            ("Trend",p["trend"]),("Pattern",p["pattern"]),("Candlestick",p["candlestick"]),
+            ("Volume confirmation",p["volume_signal"]),("Support",money(t["Support"])),
+            ("Resistance",money(t["Resistance"])),("Breakout watch",t["Breakout"])
+        ]
+        st.dataframe(pd.DataFrame(rows,columns=["Signal","Reading"]),hide_index=True,use_container_width=True)
 
     with tabs[4]:
         st.subheader("Open Interest")
         if oi["available"]:
             x,y,z=st.columns(3)
-            x.metric("Put/Call OI", "N/A" if oi["pcr"] is None else f'{oi["pcr"]:.2f}')
-            y.metric("Max pain", money(oi["max_pain"]))
-            z.metric("OI signal", oi["signal"])
-            st.dataframe(pd.DataFrame(oi["levels"]), use_container_width=True, hide_index=True)
+            x.metric("Put/Call OI","N/A" if oi["pcr"] is None else f'{oi["pcr"]:.2f}')
+            y.metric("Max pain",money(oi["max_pain"]))
+            z.metric("OI signal",oi["signal"])
+            if oi["levels"]:
+                st.dataframe(pd.DataFrame(oi["levels"]),use_container_width=True,hide_index=True)
         else:
             st.warning(oi["message"])
-        st.caption("OI is relevant only when derivatives data is available for the security. The production version should use a licensed exchange-grade OI feed.")
+        st.caption("For Indian production use, replace the prototype OI adapter with an appropriately licensed exchange-grade feed.")
 
     with tabs[5]:
         names=["Revenue Growth","Earnings Growth","P/E","Forward P/E","P/B","EV/EBITDA","ROE","ROA","Profit Margin","Operating Margin","Debt/Equity","EPS","FCF","Beta"]
@@ -146,11 +150,11 @@ if go or q:
 
     with tabs[6]:
         st.subheader(f"Relevant ratios: {d['sector']}")
-        st.write(d["framework"])
+        st.dataframe(pd.DataFrame({"Relevant KPI":d["framework"]}),hide_index=True,use_container_width=True)
 
     with tabs[7]:
         st.subheader("Valuation")
-        st.warning("Current package uses a transparent prototype P/E + P/B anchor. The next valuation upgrade should add normalized peer, historical and sector-specific DCF/FCFE methods.")
+        st.warning("Prototype valuation: P/E + P/B anchor. Future production upgrade: normalized peers, historical multiples and sector-specific DCF/FCFE.")
         st.dataframe(pd.DataFrame(list(v.items()),columns=["Metric","Value"]),hide_index=True,use_container_width=True)
 
     with tabs[8]:
@@ -160,4 +164,4 @@ if go or q:
         else:
             st.info("Click to rank five potentially stronger alternatives.")
 
-    st.caption("Buddyy is investment research/decision support. Data may be delayed or incomplete. Entry/exit levels are model outputs, not guarantees.")
+    st.caption("Buddyy is investment research/decision support. Market data can be delayed or incomplete. Entry/exit levels are model outputs, not guaranteed returns.")
